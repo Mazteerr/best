@@ -289,3 +289,123 @@ export const addReceptionItem = async (
 
   return data
 }
+
+export const updateReceptionHeader = async (
+  receptionId: string,
+  updates: {
+    reception_number?: string
+    reception_date?: string
+    counterparty_id?: string
+  }
+) => {
+  const { error } = await supabase
+    .from('receptions')
+    .update(updates)
+    .eq('id', receptionId)
+
+  if (error) {
+    throw new Error(`Ошибка обновления приемки: ${error.message}`)
+  }
+}
+
+export const duplicateMotor = async (motorId: string) => {
+  const { data: motor, error: motorError } = await supabase
+    .from('accepted_motors')
+    .select('reception_id, subdivision_id, motor_service_description, motor_inventory_number')
+    .eq('id', motorId)
+    .single()
+
+  if (motorError) {
+    throw new Error(`Ошибка загрузки двигателя: ${motorError.message}`)
+  }
+
+  const { data: maxPosition, error: maxPosError } = await supabase
+    .from('accepted_motors')
+    .select('position_in_reception')
+    .eq('reception_id', motor.reception_id)
+    .order('position_in_reception', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (maxPosError && maxPosError.code !== 'PGRST116') {
+    throw new Error(`Ошибка получения максимальной позиции: ${maxPosError.message}`)
+  }
+
+  const newPosition = (maxPosition?.position_in_reception || 0) + 1
+
+  const { data: newMotor, error: newMotorError } = await supabase
+    .from('accepted_motors')
+    .insert({
+      reception_id: motor.reception_id,
+      subdivision_id: motor.subdivision_id,
+      position_in_reception: newPosition,
+      motor_service_description: motor.motor_service_description,
+      motor_inventory_number: motor.motor_inventory_number,
+    })
+    .select()
+    .single()
+
+  if (newMotorError) {
+    throw new Error(`Ошибка создания дубликата двигателя: ${newMotorError.message}`)
+  }
+
+  const { data: items, error: itemsError } = await supabase
+    .from('reception_items')
+    .select('item_description, work_group, transaction_type, quantity, price')
+    .eq('accepted_motor_id', motorId)
+
+  if (itemsError) {
+    throw new Error(`Ошибка загрузки позиций: ${itemsError.message}`)
+  }
+
+  if (items && items.length > 0) {
+    const newItems = items.map((item) => ({
+      accepted_motor_id: newMotor.id,
+      ...item,
+    }))
+
+    const { error: insertItemsError } = await supabase
+      .from('reception_items')
+      .insert(newItems)
+
+    if (insertItemsError) {
+      throw new Error(`Ошибка копирования позиций: ${insertItemsError.message}`)
+    }
+  }
+
+  return newMotor
+}
+
+export const deleteMotor = async (motorId: string) => {
+  const { data: items, error: itemsCheckError } = await supabase
+    .from('reception_items')
+    .select('id, upd_document_id')
+    .eq('accepted_motor_id', motorId)
+
+  if (itemsCheckError) {
+    throw new Error(`Ошибка проверки позиций: ${itemsCheckError.message}`)
+  }
+
+  const hasLinkedItems = items?.some((item) => item.upd_document_id !== null)
+  if (hasLinkedItems) {
+    throw new Error('Невозможно удалить позицию, содержащую элементы связанные с УПД')
+  }
+
+  const { error: deleteItemsError } = await supabase
+    .from('reception_items')
+    .delete()
+    .eq('accepted_motor_id', motorId)
+
+  if (deleteItemsError) {
+    throw new Error(`Ошибка удаления позиций: ${deleteItemsError.message}`)
+  }
+
+  const { error: deleteMotorError } = await supabase
+    .from('accepted_motors')
+    .delete()
+    .eq('id', motorId)
+
+  if (deleteMotorError) {
+    throw new Error(`Ошибка удаления двигателя: ${deleteMotorError.message}`)
+  }
+}

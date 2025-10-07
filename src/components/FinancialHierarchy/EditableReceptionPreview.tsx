@@ -1,7 +1,9 @@
 import React, { useState } from 'react'
-import { ChevronDown, ChevronRight, CreditCard as Edit, Trash2, Plus, Save, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, CreditCard as Edit2, Copy, Trash2, Plus, X, Bookmark, Search } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
+import { CounterpartySelectionModal } from '../Acceptance/CounterpartySelectionModal'
+import { Counterparty } from '../../services/counterpartyService'
 
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString)
@@ -55,112 +57,210 @@ interface EditableReceptionPreviewProps {
   onUpdateItem: (itemId: string, updates: Partial<ReceptionItem>) => Promise<void>
   onDeleteItem: (itemId: string) => Promise<void>
   onAddItem: (motorId: string, item: Omit<ReceptionItem, 'id' | 'upd_document_id'>) => Promise<void>
+  onReceptionNumberUpdate?: (newReceptionNumber: string) => void
+  onReceptionDateUpdate?: (newReceptionDate: string) => void
+  onCounterpartyUpdate?: (counterpartyId: string) => void
+  onAddGroupClick?: (motorId: string) => void
+  onDuplicatePosition?: (motorId: string) => void
+  onDeletePosition?: (motorId: string) => void
+  onAddItemToGroup?: (motorId: string, workGroup: string) => void
+  onSaveAsTemplate?: (motorId: string) => void
 }
 
 interface PositionItemProps {
   item: ReceptionItem
-  onEdit: (itemId: string, field: keyof ReceptionItem, value: string | number) => void
-  onSave: (itemId: string) => void
-  onDelete: (itemId: string) => void
-  isEditing: boolean
-  editValues: Partial<ReceptionItem>
+  onUpdate?: (updates: Partial<ReceptionItem>) => void
+  onNameUpdate?: (newName: string) => void
+  onDelete?: () => void
 }
 
-const PositionItem: React.FC<PositionItemProps> = ({
-  item,
-  onEdit,
-  onSave,
-  onDelete,
-  isEditing,
-  editValues,
-}) => {
-  const isLinked = !!item.upd_document_id
-  const displayValues = isEditing ? { ...item, ...editValues } : item
-  const total = displayValues.quantity * displayValues.price
+const PositionItem: React.FC<PositionItemProps> = ({ item, onUpdate, onNameUpdate, onDelete }) => {
+  const [isEditingQuantity, setIsEditingQuantity] = useState(false)
+  const [isEditingPrice, setIsEditingPrice] = useState(false)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editQuantity, setEditQuantity] = useState(item.quantity)
+  const [editPrice, setEditPrice] = useState(item.price)
+  const [editName, setEditName] = useState(item.item_description)
+  const [showCopyFeedback, setShowCopyFeedback] = useState(false)
 
+  const isLinked = !!item.upd_document_id
+  const total = item.quantity * item.price
   const isIncome = item.transaction_type === 'Доходы'
 
+  const handleQuantitySave = () => {
+    if (onUpdate && editQuantity !== item.quantity) {
+      onUpdate({ quantity: editQuantity })
+    }
+    setIsEditingQuantity(false)
+  }
+
+  const handlePriceSave = () => {
+    if (onUpdate && editPrice !== item.price) {
+      onUpdate({ price: editPrice })
+    }
+    setIsEditingPrice(false)
+  }
+
+  const handleNameSave = () => {
+    if (onNameUpdate && editName !== item.item_description && editName.trim()) {
+      onNameUpdate(editName.trim())
+    }
+    setIsEditingName(false)
+  }
+
+  const handleQuantityKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleQuantitySave()
+    } else if (e.key === 'Escape') {
+      setEditQuantity(item.quantity)
+      setIsEditingQuantity(false)
+    }
+  }
+
+  const handlePriceKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handlePriceSave()
+    } else if (e.key === 'Escape') {
+      setEditPrice(item.price)
+      setIsEditingPrice(false)
+    }
+  }
+
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleNameSave()
+    } else if (e.key === 'Escape') {
+      setEditName(item.item_description)
+      setIsEditingName(false)
+    }
+  }
+
+  const handleCopyName = async () => {
+    try {
+      await navigator.clipboard.writeText(item.item_description)
+      setShowCopyFeedback(true)
+      setTimeout(() => setShowCopyFeedback(false), 1500)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
   return (
-    <div
-      className={`py-2 px-3 rounded transition-colors ${
-        isLinked ? 'bg-gray-100 border border-gray-300' : 'hover:bg-gray-50 border border-transparent'
-      }`}
-    >
+    <div className={`py-2 px-3 rounded transition-colors ${
+      isLinked ? 'bg-gray-100 border border-gray-300' : 'hover:bg-gray-50'
+    }`}>
       <div className="flex items-center justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          {!isLinked && isEditing ? (
-            <Input
-              value={displayValues.item_description}
-              onChange={(e) => onEdit(item.id, 'item_description', e.target.value)}
-              className="h-8 text-sm"
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          {!isLinked && isEditingName && onNameUpdate ? (
+            <input
+              type="text"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onBlur={handleNameSave}
+              onKeyDown={handleNameKeyDown}
+              autoFocus
+              className="flex-1 px-2 py-1 text-sm text-gray-900 border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           ) : (
-            <p className="text-sm text-gray-900">{displayValues.item_description}</p>
+            <>
+              <p className="text-sm text-gray-900">
+                {item.item_description}
+              </p>
+              <div className="flex items-center gap-1">
+                {!isLinked && onUpdate && (
+                  <button
+                    onClick={() => setIsEditingName(true)}
+                    className="text-gray-400 hover:text-blue-600 transition flex-shrink-0"
+                    title="Редактировать"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                )}
+                <button
+                  onClick={handleCopyName}
+                  className={`text-gray-400 hover:text-blue-600 transition flex-shrink-0 ${showCopyFeedback ? 'text-green-500' : ''}`}
+                  title={showCopyFeedback ? 'Скопировано!' : 'Копировать название'}
+                >
+                  <Copy size={14} />
+                </button>
+              </div>
+            </>
+          )}
+          {isLinked && (
+            <span className="text-xs text-gray-500 italic">В УПД</span>
           )}
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            {!isLinked && isEditing ? (
-              <Input
-                type="number"
-                value={displayValues.quantity}
-                onChange={(e) => onEdit(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                className="h-8 text-sm w-20"
-              />
-            ) : (
-              <p className="text-sm text-gray-600 font-medium">{displayValues.quantity}</p>
-            )}
-          </div>
-          <div className="flex gap-1">
-            {!isLinked && (
-              <>
-                {isEditing ? (
-                  <>
-                    <button
-                      onClick={() => onSave(item.id)}
-                      className="p-1 text-green-600 hover:bg-green-50 rounded"
-                      title="Сохранить"
-                    >
-                      <Save size={16} />
-                    </button>
-                    <button
-                      onClick={() => onEdit(item.id, 'item_description', item.item_description)}
-                      className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                      title="Отмена"
-                    >
-                      <X size={16} />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => onEdit(item.id, 'item_description', item.item_description)}
-                      className="p-1 text-blue-600 hover:bg-blue-50 rounded"
-                      title="Редактировать"
-                    >
-                      <Edit size={16} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(item.id)}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded"
-                      title="Удалить"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </>
-                )}
-              </>
-            )}
-            {isLinked && (
-              <span className="text-xs text-gray-500 italic">В УПД</span>
-            )}
-          </div>
+        <div className="text-right flex items-center gap-1 justify-end">
+          {!isLinked && isEditingQuantity && onUpdate ? (
+            <input
+              type="number"
+              value={editQuantity}
+              onChange={(e) => setEditQuantity(parseFloat(e.target.value) || 0)}
+              onBlur={handleQuantitySave}
+              onKeyDown={handleQuantityKeyDown}
+              autoFocus
+              className="w-16 px-2 py-1 text-sm text-right border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 font-medium">
+                {item.quantity}
+              </p>
+              {!isLinked && onUpdate && (
+                <button
+                  onClick={() => setIsEditingQuantity(true)}
+                  className="text-gray-400 hover:text-blue-600 transition flex-shrink-0"
+                  title="Редактировать количество"
+                >
+                  <Edit2 size={14} />
+                </button>
+              )}
+              {!isLinked && onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="text-gray-400 hover:text-red-600 transition flex-shrink-0"
+                  title="Удалить позицию"
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
-      <div className="mt-1">
+      <div className="mt-1 flex items-center gap-2">
         <span className={`text-xs font-medium ${isIncome ? 'text-green-700' : 'text-red-700'}`}>
           {isIncome ? '+' : ''} {total.toLocaleString('ru-RU')} ₽
         </span>
+        {!isLinked && onUpdate && (
+          <>
+            <span className="text-xs text-gray-400">•</span>
+            {isEditingPrice ? (
+              <input
+                type="number"
+                value={editPrice}
+                onChange={(e) => setEditPrice(parseFloat(e.target.value) || 0)}
+                onBlur={handlePriceSave}
+                onKeyDown={handlePriceKeyDown}
+                autoFocus
+                className="w-24 px-2 py-1 text-xs text-right border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-gray-500">
+                  {item.price.toLocaleString('ru-RU')} ₽/шт
+                </span>
+                <button
+                  onClick={() => setIsEditingPrice(true)}
+                  className="text-gray-400 hover:text-blue-600 transition flex-shrink-0"
+                  title="Редактировать цену"
+                >
+                  <Edit2 size={12} />
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   )
@@ -169,27 +269,18 @@ const PositionItem: React.FC<PositionItemProps> = ({
 interface TransactionGroupProps {
   type: string
   items: ReceptionItem[]
-  editingItems: Record<string, Partial<ReceptionItem>>
-  onEdit: (itemId: string, field: keyof ReceptionItem, value: string | number) => void
-  onSave: (itemId: string) => void
-  onDelete: (itemId: string) => void
+  onItemUpdate?: (itemIndex: number, updates: Partial<ReceptionItem>) => void
+  onItemNameUpdate?: (itemIndex: number, newName: string) => void
+  onItemDelete?: (itemIndex: number) => void
 }
 
-const TransactionGroup: React.FC<TransactionGroupProps> = ({
-  type,
-  items,
-  editingItems,
-  onEdit,
-  onSave,
-  onDelete,
-}) => {
+const TransactionGroup: React.FC<TransactionGroupProps> = ({ type, items, onItemUpdate, onItemNameUpdate, onItemDelete }) => {
   const [isExpanded, setIsExpanded] = useState(true)
 
   if (items.length === 0) return null
 
   const isIncome = type === 'Доходы'
   const textColor = isIncome ? 'text-green-600' : 'text-red-600'
-  const bgColor = isIncome ? 'bg-green-50' : 'bg-red-50'
 
   const total = items.reduce((sum, item) => sum + (item.quantity * item.price), 0)
 
@@ -205,7 +296,7 @@ const TransactionGroup: React.FC<TransactionGroupProps> = ({
         </div>
         <div className="flex items-center gap-3">
           <span className={`text-sm font-semibold ${textColor}`}>
-            {isIncome ? '+' : '-'} {total.toLocaleString('ru-RU')} ₽
+            {isIncome ? '+' : '-'} {Math.abs(total).toLocaleString('ru-RU')} ₽
           </span>
           <button className="text-gray-600">
             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -215,15 +306,13 @@ const TransactionGroup: React.FC<TransactionGroupProps> = ({
 
       {isExpanded && (
         <div className="mt-1 space-y-1 pl-4">
-          {items.map((item) => (
+          {items.map((item, idx) => (
             <PositionItem
               key={item.id}
               item={item}
-              onEdit={onEdit}
-              onSave={onSave}
-              onDelete={onDelete}
-              isEditing={editingItems[item.id] !== undefined}
-              editValues={editingItems[item.id] || {}}
+              onUpdate={onItemUpdate && !item.upd_document_id ? (updates) => onItemUpdate(idx, updates) : undefined}
+              onNameUpdate={onItemNameUpdate && !item.upd_document_id ? (newName) => onItemNameUpdate(idx, newName) : undefined}
+              onDelete={onItemDelete && !item.upd_document_id ? () => onItemDelete(idx) : undefined}
             />
           ))}
         </div>
@@ -235,28 +324,20 @@ const TransactionGroup: React.FC<TransactionGroupProps> = ({
 interface BaseItemGroupProps {
   baseItemName: string
   items: ReceptionItem[]
-  editingItems: Record<string, Partial<ReceptionItem>>
-  onEdit: (itemId: string, field: keyof ReceptionItem, value: string | number) => void
-  onSave: (itemId: string) => void
-  onDelete: (itemId: string) => void
+  onItemUpdate?: (itemIndex: number, updates: Partial<ReceptionItem>) => void
+  onItemNameUpdate?: (itemIndex: number, newName: string) => void
+  onItemDelete?: (itemIndex: number) => void
 }
 
-const BaseItemGroup: React.FC<BaseItemGroupProps> = ({
-  baseItemName,
-  items,
-  editingItems,
-  onEdit,
-  onSave,
-  onDelete,
-}) => {
+const BaseItemGroup: React.FC<BaseItemGroupProps> = ({ baseItemName, items, onItemUpdate, onItemNameUpdate, onItemDelete }) => {
   const [isExpanded, setIsExpanded] = useState(true)
 
-  const incomeItems = items.filter((item) => item.transaction_type === 'Доходы')
-  const expenseItems = items.filter((item) => item.transaction_type === 'Расходы')
+  const incomeItems = items.filter(item => item.transaction_type === 'Доходы')
+  const expenseItems = items.filter(item => item.transaction_type === 'Расходы')
 
   const incomeTotal = incomeItems.reduce((sum, item) => sum + (item.quantity * item.price), 0)
   const expenseTotal = expenseItems.reduce((sum, item) => sum + (item.quantity * item.price), 0)
-  const profit = incomeTotal - expenseTotal
+  const profit = incomeTotal + expenseTotal
 
   return (
     <div className="bg-blue-50 rounded-lg px-3 py-2">
@@ -267,7 +348,7 @@ const BaseItemGroup: React.FC<BaseItemGroupProps> = ({
         <h3 className="text-sm font-medium text-gray-800 flex-1">{baseItemName}</h3>
         <div className="flex items-center gap-3">
           <span className="text-xs text-green-600 font-medium">↗ {incomeTotal.toLocaleString('ru-RU')} ₽</span>
-          <span className="text-xs text-red-600 font-medium">↘ {expenseTotal.toLocaleString('ru-RU')} ₽</span>
+          <span className="text-xs text-red-600 font-medium">↘ {Math.abs(expenseTotal).toLocaleString('ru-RU')} ₽</span>
           <span className="text-xs text-blue-600 font-semibold">₽ {profit.toLocaleString('ru-RU')} ₽</span>
           <button className="text-gray-600">
             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -280,18 +361,34 @@ const BaseItemGroup: React.FC<BaseItemGroupProps> = ({
           <TransactionGroup
             type="Доходы"
             items={incomeItems}
-            editingItems={editingItems}
-            onEdit={onEdit}
-            onSave={onSave}
-            onDelete={onDelete}
+            onItemUpdate={onItemUpdate ? (idx, updates) => {
+              const globalIdx = items.indexOf(incomeItems[idx])
+              onItemUpdate(globalIdx, updates)
+            } : undefined}
+            onItemNameUpdate={onItemNameUpdate ? (idx, newName) => {
+              const globalIdx = items.indexOf(incomeItems[idx])
+              onItemNameUpdate(globalIdx, newName)
+            } : undefined}
+            onItemDelete={onItemDelete ? (idx) => {
+              const globalIdx = items.indexOf(incomeItems[idx])
+              onItemDelete(globalIdx)
+            } : undefined}
           />
           <TransactionGroup
             type="Расходы"
             items={expenseItems}
-            editingItems={editingItems}
-            onEdit={onEdit}
-            onSave={onSave}
-            onDelete={onDelete}
+            onItemUpdate={onItemUpdate ? (idx, updates) => {
+              const globalIdx = items.indexOf(expenseItems[idx])
+              onItemUpdate(globalIdx, updates)
+            } : undefined}
+            onItemNameUpdate={onItemNameUpdate ? (idx, newName) => {
+              const globalIdx = items.indexOf(expenseItems[idx])
+              onItemNameUpdate(globalIdx, newName)
+            } : undefined}
+            onItemDelete={onItemDelete ? (idx) => {
+              const globalIdx = items.indexOf(expenseItems[idx])
+              onItemDelete(globalIdx)
+            } : undefined}
           />
         </div>
       )}
@@ -302,20 +399,13 @@ const BaseItemGroup: React.FC<BaseItemGroupProps> = ({
 interface WorkGroupProps {
   workGroup: string
   items: ReceptionItem[]
-  editingItems: Record<string, Partial<ReceptionItem>>
-  onEdit: (itemId: string, field: keyof ReceptionItem, value: string | number) => void
-  onSave: (itemId: string) => void
-  onDelete: (itemId: string) => void
+  onItemUpdate?: (itemIndex: number, updates: Partial<ReceptionItem>) => void
+  onItemNameUpdate?: (itemIndex: number, newName: string) => void
+  onItemDelete?: (itemIndex: number) => void
+  onAddItemToGroup?: (workGroup: string) => void
 }
 
-const WorkGroup: React.FC<WorkGroupProps> = ({
-  workGroup,
-  items,
-  editingItems,
-  onEdit,
-  onSave,
-  onDelete,
-}) => {
+const WorkGroup: React.FC<WorkGroupProps> = ({ workGroup, items, onItemUpdate, onItemNameUpdate, onItemDelete, onAddItemToGroup }) => {
   const [isExpanded, setIsExpanded] = useState(true)
 
   const baseItemMap = new Map<string, ReceptionItem[]>()
@@ -333,7 +423,7 @@ const WorkGroup: React.FC<WorkGroupProps> = ({
   const expenseTotal = items
     .filter(item => item.transaction_type === 'Расходы')
     .reduce((sum, item) => sum + (item.quantity * item.price), 0)
-  const profit = incomeTotal - expenseTotal
+  const profit = incomeTotal + expenseTotal
 
   return (
     <div className="border-l-4 border-blue-400 pl-3">
@@ -344,7 +434,7 @@ const WorkGroup: React.FC<WorkGroupProps> = ({
         <h2 className="text-sm font-medium text-gray-800 flex-1">{workGroup}</h2>
         <div className="flex items-center gap-3">
           <span className="text-xs text-green-600 font-medium">↗ {incomeTotal.toLocaleString('ru-RU')} ₽</span>
-          <span className="text-xs text-red-600 font-medium">↘ {expenseTotal.toLocaleString('ru-RU')} ₽</span>
+          <span className="text-xs text-red-600 font-medium">↘ {Math.abs(expenseTotal).toLocaleString('ru-RU')} ₽</span>
           <span className="text-xs text-blue-600 font-semibold">₽ {profit.toLocaleString('ru-RU')} ₽</span>
           <button className="text-gray-600">
             {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -359,12 +449,31 @@ const WorkGroup: React.FC<WorkGroupProps> = ({
               key={baseName}
               baseItemName={baseName}
               items={baseItems}
-              editingItems={editingItems}
-              onEdit={onEdit}
-              onSave={onSave}
-              onDelete={onDelete}
+              onItemUpdate={onItemUpdate ? (idx, updates) => {
+                const globalIdx = items.indexOf(baseItems[idx])
+                onItemUpdate(globalIdx, updates)
+              } : undefined}
+              onItemNameUpdate={onItemNameUpdate ? (idx, newName) => {
+                const globalIdx = items.indexOf(baseItems[idx])
+                onItemNameUpdate(globalIdx, newName)
+              } : undefined}
+              onItemDelete={onItemDelete ? (idx) => {
+                const globalIdx = items.indexOf(baseItems[idx])
+                onItemDelete(globalIdx)
+              } : undefined}
             />
           ))}
+          {onAddItemToGroup && (
+            <div className="mt-2">
+              <button
+                onClick={() => onAddItemToGroup(workGroup)}
+                className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors py-2"
+              >
+                <Plus size={16} />
+                Добавить позицию в текущей группе
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -373,27 +482,28 @@ const WorkGroup: React.FC<WorkGroupProps> = ({
 
 interface MotorGroupProps {
   motor: AcceptedMotor
-  editingItems: Record<string, Partial<ReceptionItem>>
-  onEdit: (itemId: string, field: keyof ReceptionItem, value: string | number) => void
-  onSave: (itemId: string) => void
-  onDelete: (itemId: string) => void
-  onAdd: (motorId: string, item: Omit<ReceptionItem, 'id' | 'upd_document_id'>) => void
-  newItem: Partial<ReceptionItem> | null
-  onNewItemChange: (field: keyof ReceptionItem, value: string | number) => void
+  onItemUpdate?: (itemIndex: number, updates: Partial<ReceptionItem>) => void
+  onItemNameUpdate?: (itemIndex: number, newName: string) => void
+  onItemDelete?: (itemIndex: number) => void
+  onAddGroupClick?: () => void
+  onDuplicatePosition?: () => void
+  onDeletePosition?: () => void
+  onAddItemToGroup?: (workGroup: string) => void
+  onSaveAsTemplate?: () => void
 }
 
 const MotorGroup: React.FC<MotorGroupProps> = ({
   motor,
-  editingItems,
-  onEdit,
-  onSave,
-  onDelete,
-  onAdd,
-  newItem,
-  onNewItemChange,
+  onItemUpdate,
+  onItemNameUpdate,
+  onItemDelete,
+  onAddGroupClick,
+  onDuplicatePosition,
+  onDeletePosition,
+  onAddItemToGroup,
+  onSaveAsTemplate,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true)
-  const [showAddForm, setShowAddForm] = useState(false)
 
   const workGroupMap = new Map<string, ReceptionItem[]>()
   for (const item of motor.items) {
@@ -403,49 +513,31 @@ const MotorGroup: React.FC<MotorGroupProps> = ({
     workGroupMap.get(item.work_group)!.push(item)
   }
 
-  const handleAdd = () => {
-    if (!newItem?.item_description || !newItem?.work_group || !newItem?.transaction_type) {
-      alert('Заполните все обязательные поля')
-      return
-    }
-    onAdd(motor.id, {
-      item_description: newItem.item_description as string,
-      work_group: newItem.work_group as string,
-      transaction_type: newItem.transaction_type as string,
-      quantity: newItem.quantity || 1,
-      price: newItem.price || 0,
-    })
-    setShowAddForm(false)
-  }
-
   const incomeTotal = motor.items
     .filter(item => item.transaction_type === 'Доходы')
     .reduce((sum, item) => sum + (item.quantity * item.price), 0)
   const expenseTotal = motor.items
     .filter(item => item.transaction_type === 'Расходы')
     .reduce((sum, item) => sum + (item.quantity * item.price), 0)
-  const profit = incomeTotal - expenseTotal
+  const profit = incomeTotal + expenseTotal
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
-      <div
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-t-lg cursor-pointer"
-      >
+      <div className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-t-lg">
         <div className="flex items-center gap-3 flex-1">
-          <span className="flex items-center justify-center w-8 h-8 bg-blue-600 text-white rounded-full text-sm font-bold">
+          <span className="flex items-center justify-center w-10 h-10 bg-blue-600 text-white rounded-full text-sm font-bold">
             {motor.position_in_reception}
           </span>
-          <div>
+          <div className="flex-1">
             <h2 className="text-sm font-semibold text-gray-900">{motor.motor_service_description}</h2>
             <p className="text-xs text-gray-600">{motor.subdivisions.name}</p>
           </div>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-green-600 font-medium">\u2197 {incomeTotal.toLocaleString('ru-RU')} ₽</span>
-          <span className="text-sm text-red-600 font-medium">\u2198 {expenseTotal.toLocaleString('ru-RU')} ₽</span>
+          <span className="text-sm text-green-600 font-medium">↗ {incomeTotal.toLocaleString('ru-RU')} ₽</span>
+          <span className="text-sm text-red-600 font-medium">↘ {Math.abs(expenseTotal).toLocaleString('ru-RU')} ₽</span>
           <span className="text-sm text-blue-600 font-semibold">₽ {profit.toLocaleString('ru-RU')} ₽</span>
-          <button className="text-gray-600">
+          <button onClick={() => setIsExpanded(!isExpanded)} className="text-gray-600">
             {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
           </button>
         </div>
@@ -458,91 +550,64 @@ const MotorGroup: React.FC<MotorGroupProps> = ({
               key={workGroup}
               workGroup={workGroup}
               items={workItems}
-              editingItems={editingItems}
-              onEdit={onEdit}
-              onSave={onSave}
-              onDelete={onDelete}
+              onItemUpdate={onItemUpdate ? (idx, updates) => {
+                const globalIdx = motor.items.indexOf(workItems[idx])
+                onItemUpdate(globalIdx, updates)
+              } : undefined}
+              onItemNameUpdate={onItemNameUpdate ? (idx, newName) => {
+                const globalIdx = motor.items.indexOf(workItems[idx])
+                onItemNameUpdate(globalIdx, newName)
+              } : undefined}
+              onItemDelete={onItemDelete ? (idx) => {
+                const globalIdx = motor.items.indexOf(workItems[idx])
+                onItemDelete(globalIdx)
+              } : undefined}
+              onAddItemToGroup={onAddItemToGroup}
             />
           ))}
-
-          <div className="mt-4 pt-4 border-t border-gray-200">
-            {!showAddForm ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setShowAddForm(true)}
-                className="w-full"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Добавить работу
-              </Button>
-            ) : (
-              <div className="p-3 bg-gray-50 rounded-lg space-y-2">
-                <div className="grid grid-cols-12 gap-2">
-                  <div className="col-span-4">
-                    <Input
-                      placeholder="Описание работы"
-                      value={(newItem?.item_description as string) || ''}
-                      onChange={(e) => onNewItemChange('item_description', e.target.value)}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Input
-                      placeholder="Группа работ"
-                      value={(newItem?.work_group as string) || ''}
-                      onChange={(e) => onNewItemChange('work_group', e.target.value)}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <select
-                      value={(newItem?.transaction_type as string) || 'Доходы'}
-                      onChange={(e) => onNewItemChange('transaction_type', e.target.value)}
-                      className="w-full h-8 text-sm border border-gray-300 rounded px-2"
-                    >
-                      <option value="Доходы">Доходы</option>
-                      <option value="Расходы">Расходы</option>
-                    </select>
-                  </div>
-                  <div className="col-span-1">
-                    <Input
-                      type="number"
-                      placeholder="Кол-во"
-                      value={(newItem?.quantity as number) || 1}
-                      onChange={(e) => onNewItemChange('quantity', parseFloat(e.target.value) || 1)}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <Input
-                      type="number"
-                      placeholder="Цена"
-                      value={(newItem?.price as number) || 0}
-                      onChange={(e) => onNewItemChange('price', parseFloat(e.target.value) || 0)}
-                      className="h-8 text-sm"
-                    />
-                  </div>
-                  <div className="col-span-1 flex gap-1">
-                    <button
-                      onClick={handleAdd}
-                      className="p-1 bg-blue-600 text-white hover:bg-blue-700 rounded"
-                      title="Добавить"
-                    >
-                      <Plus size={16} />
-                    </button>
-                    <button
-                      onClick={() => setShowAddForm(false)}
-                      className="p-1 bg-gray-300 text-gray-700 hover:bg-gray-400 rounded"
-                      title="Отмена"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          {(onAddGroupClick || onDuplicatePosition || onDeletePosition || onSaveAsTemplate) && (
+            <div className="mt-4 pl-3 flex items-center gap-4">
+              {onAddGroupClick && (
+                <button
+                  onClick={onAddGroupClick}
+                  className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors py-2"
+                >
+                  <Plus size={16} />
+                  Создать группу работ
+                </button>
+              )}
+              {onDuplicatePosition && (
+                <button
+                  onClick={onDuplicatePosition}
+                  className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium transition-colors py-2"
+                  title="Продублировать позицию"
+                >
+                  <Copy size={16} />
+                  Продублировать позицию
+                </button>
+              )}
+              {onDeletePosition && (
+                <button
+                  onClick={onDeletePosition}
+                  className="flex items-center gap-2 text-sm text-red-600 hover:text-red-700 font-medium transition-colors py-2"
+                  title="Удалить позицию"
+                >
+                  <X size={16} />
+                  Удалить позицию
+                </button>
+              )}
+              {onSaveAsTemplate && (
+                <button
+                  onClick={onSaveAsTemplate}
+                  className="flex items-center gap-2 text-sm text-teal-600 hover:text-teal-700 font-medium transition-colors py-2"
+                  title="Сохранить как шаблон"
+                >
+                  <Bookmark size={16} />
+                  Сохранить как шаблон
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -554,66 +619,90 @@ export const EditableReceptionPreview: React.FC<EditableReceptionPreviewProps> =
   onUpdateItem,
   onDeleteItem,
   onAddItem,
+  onReceptionNumberUpdate,
+  onReceptionDateUpdate,
+  onCounterpartyUpdate,
+  onAddGroupClick,
+  onDuplicatePosition,
+  onDeletePosition,
+  onAddItemToGroup,
+  onSaveAsTemplate,
 }) => {
-  const [editingItems, setEditingItems] = useState<Record<string, Partial<ReceptionItem>>>({})
-  const [newItems, setNewItems] = useState<Record<string, Partial<ReceptionItem>>>({})
+  const [isEditingReceptionNumber, setIsEditingReceptionNumber] = useState(false)
+  const [editReceptionNumber, setEditReceptionNumber] = useState('')
+  const [isEditingReceptionDate, setIsEditingReceptionDate] = useState(false)
+  const [editReceptionDate, setEditReceptionDate] = useState('')
+  const [isCounterpartyModalOpen, setIsCounterpartyModalOpen] = useState(false)
 
-  const handleEdit = (itemId: string, field: keyof ReceptionItem, value: string | number) => {
-    if (field === 'item_description' && editingItems[itemId] === undefined) {
-      const item = reception.motors
-        .flatMap((m) => m.items)
-        .find((i) => i.id === itemId)
-      if (item) {
-        setEditingItems((prev) => ({
-          ...prev,
-          [itemId]: { ...item },
-        }))
+  const handleItemUpdate = async (motorId: string, itemIndex: number, updates: Partial<ReceptionItem>) => {
+    const motor = reception.motors.find((m) => m.id === motorId)
+    if (!motor) return
+
+    const item = motor.items[itemIndex]
+    if (!item) return
+
+    await onUpdateItem(item.id, updates)
+  }
+
+  const handleItemNameUpdate = async (motorId: string, itemIndex: number, newName: string) => {
+    const motor = reception.motors.find((m) => m.id === motorId)
+    if (!motor) return
+
+    const item = motor.items[itemIndex]
+    if (!item) return
+
+    const oldBaseName = item.item_description.split('_ID_')[0].trim()
+
+    for (const motorItem of motor.items) {
+      const currentBaseName = motorItem.item_description.split('_ID_')[0].trim()
+      if (currentBaseName === oldBaseName) {
+        const idPart = motorItem.item_description.includes('_ID_') ? motorItem.item_description.split('_ID_')[1] : ''
+        const newItemName = idPart ? `${newName}_ID_${idPart}` : newName
+        await onUpdateItem(motorItem.id, { item_description: newItemName })
       }
-    } else {
-      setEditingItems((prev) => ({
-        ...prev,
-        [itemId]: {
-          ...prev[itemId],
-          [field]: value,
-        },
-      }))
     }
   }
 
-  const handleSave = async (itemId: string) => {
-    const updates = editingItems[itemId]
-    if (!updates) return
+  const handleItemDelete = async (motorId: string, itemIndex: number) => {
+    const motor = reception.motors.find((m) => m.id === motorId)
+    if (!motor) return
 
-    await onUpdateItem(itemId, updates)
-    setEditingItems((prev) => {
-      const newEditing = { ...prev }
-      delete newEditing[itemId]
-      return newEditing
-    })
+    const item = motor.items[itemIndex]
+    if (!item) return
+
+    await onDeleteItem(item.id)
   }
 
-  const handleDelete = async (itemId: string) => {
-    if (!confirm('Вы уверены, что хотите удалить эту позицию?')) return
-    await onDeleteItem(itemId)
+  const handleReceptionNumberSave = () => {
+    if (onReceptionNumberUpdate && editReceptionNumber.trim() && editReceptionNumber !== reception.reception_number) {
+      onReceptionNumberUpdate(editReceptionNumber.trim())
+    }
+    setIsEditingReceptionNumber(false)
   }
 
-  const handleNewItemChange = (motorId: string, field: keyof ReceptionItem, value: string | number) => {
-    setNewItems((prev) => ({
-      ...prev,
-      [motorId]: {
-        ...prev[motorId],
-        [field]: value,
-      },
-    }))
+  const handleReceptionNumberKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleReceptionNumberSave()
+    } else if (e.key === 'Escape') {
+      setEditReceptionNumber(reception.reception_number)
+      setIsEditingReceptionNumber(false)
+    }
   }
 
-  const handleAddItem = async (motorId: string, item: Omit<ReceptionItem, 'id' | 'upd_document_id'>) => {
-    await onAddItem(motorId, item)
-    setNewItems((prev) => {
-      const updated = { ...prev }
-      delete updated[motorId]
-      return updated
-    })
+  const handleReceptionDateSave = () => {
+    if (onReceptionDateUpdate && editReceptionDate.trim() && editReceptionDate !== reception.reception_date) {
+      onReceptionDateUpdate(editReceptionDate.trim())
+    }
+    setIsEditingReceptionDate(false)
+  }
+
+  const handleReceptionDateKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleReceptionDateSave()
+    } else if (e.key === 'Escape') {
+      setEditReceptionDate(reception.reception_date)
+      setIsEditingReceptionDate(false)
+    }
   }
 
   return (
@@ -623,37 +712,112 @@ export const EditableReceptionPreview: React.FC<EditableReceptionPreviewProps> =
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
             <span className="text-gray-500">Номер приемки:</span>
-            <p className="font-medium">{reception.reception_number}</p>
+            {isEditingReceptionNumber && onReceptionNumberUpdate ? (
+              <input
+                type="text"
+                value={editReceptionNumber}
+                onChange={(e) => setEditReceptionNumber(e.target.value)}
+                onBlur={handleReceptionNumberSave}
+                onKeyDown={handleReceptionNumberKeyDown}
+                autoFocus
+                className="w-full px-2 py-1 text-sm font-medium border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+              />
+            ) : (
+              <div className="flex items-center gap-2 mt-1">
+                <p className="font-medium">{reception.reception_number}</p>
+                {onReceptionNumberUpdate && (
+                  <button
+                    onClick={() => {
+                      setEditReceptionNumber(reception.reception_number)
+                      setIsEditingReceptionNumber(true)
+                    }}
+                    className="text-gray-400 hover:text-blue-600 transition"
+                    title="Редактировать номер приемки"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <span className="text-gray-500">Дата приемки:</span>
-            <p className="font-medium">
-              {formatDate(reception.reception_date)}
-            </p>
+            {isEditingReceptionDate && onReceptionDateUpdate ? (
+              <input
+                type="date"
+                value={editReceptionDate}
+                onChange={(e) => setEditReceptionDate(e.target.value)}
+                onBlur={handleReceptionDateSave}
+                onKeyDown={handleReceptionDateKeyDown}
+                autoFocus
+                className="w-full px-2 py-1 text-sm font-medium border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 mt-1"
+              />
+            ) : (
+              <div className="flex items-center gap-2 mt-1">
+                <p className="font-medium">{formatDate(reception.reception_date)}</p>
+                {onReceptionDateUpdate && (
+                  <button
+                    onClick={() => {
+                      setEditReceptionDate(reception.reception_date)
+                      setIsEditingReceptionDate(true)
+                    }}
+                    className="text-gray-400 hover:text-blue-600 transition"
+                    title="Редактировать дату приемки"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <span className="text-gray-500">Контрагент:</span>
-            <p className="font-medium">{reception.counterparties.name}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="font-medium">{reception.counterparties.name}</p>
+              {onCounterpartyUpdate && (
+                <button
+                  onClick={() => setIsCounterpartyModalOpen(true)}
+                  className="text-gray-400 hover:text-blue-600 transition"
+                  title="Выбрать контрагента"
+                >
+                  <Search size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
       <div className="space-y-4">
-        <h3 className="font-semibold text-gray-700">Двигатели ({reception.motors.length})</h3>
+        <h3 className="font-semibold text-gray-700">
+          Двигатели ({reception.motors.length})
+        </h3>
         {reception.motors.map((motor) => (
           <MotorGroup
             key={motor.id}
             motor={motor}
-            editingItems={editingItems}
-            onEdit={handleEdit}
-            onSave={handleSave}
-            onDelete={handleDelete}
-            onAdd={handleAddItem}
-            newItem={newItems[motor.id] || null}
-            onNewItemChange={(field, value) => handleNewItemChange(motor.id, field, value)}
+            onItemUpdate={(idx, updates) => handleItemUpdate(motor.id, idx, updates)}
+            onItemNameUpdate={(idx, newName) => handleItemNameUpdate(motor.id, idx, newName)}
+            onItemDelete={(idx) => handleItemDelete(motor.id, idx)}
+            onAddGroupClick={onAddGroupClick ? () => onAddGroupClick(motor.id) : undefined}
+            onDuplicatePosition={onDuplicatePosition ? () => onDuplicatePosition(motor.id) : undefined}
+            onDeletePosition={onDeletePosition ? () => onDeletePosition(motor.id) : undefined}
+            onAddItemToGroup={onAddItemToGroup ? (workGroup) => onAddItemToGroup(motor.id, workGroup) : undefined}
+            onSaveAsTemplate={onSaveAsTemplate ? () => onSaveAsTemplate(motor.id) : undefined}
           />
         ))}
       </div>
+
+      <CounterpartySelectionModal
+        isOpen={isCounterpartyModalOpen}
+        onClose={() => setIsCounterpartyModalOpen(false)}
+        onSelect={(counterparty: Counterparty) => {
+          if (onCounterpartyUpdate) {
+            onCounterpartyUpdate(counterparty.id)
+          }
+          setIsCounterpartyModalOpen(false)
+        }}
+      />
     </div>
   )
 }
