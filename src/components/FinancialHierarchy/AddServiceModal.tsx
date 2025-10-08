@@ -67,7 +67,7 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
             type="text"
             value={serviceName}
             onChange={(e) => setServiceName(e.target.value)}
-            placeholder="Замена масла"
+            placeholder="Замена масла1"
             autoFocus
           />
         </div>
