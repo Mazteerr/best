@@ -11,6 +11,8 @@ import {
   updateReceptionHeader,
   duplicateMotor,
   deleteMotor,
+  updateMotorServiceName,
+  updateMotorSubdivision,
 } from '../../services/receptionService'
 import { ArrowLeft, Download } from 'lucide-react'
 import {
@@ -220,6 +222,26 @@ export const EditReception: React.FC = () => {
     }
   }
 
+  const handleServiceNameUpdate = async (motorId: string, newServiceName: string) => {
+    try {
+      await updateMotorServiceName(motorId, newServiceName)
+      await loadReception()
+      setSuccessMessage(`Название позиции изменено на "${newServiceName}"`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка обновления названия позиции')
+    }
+  }
+
+  const handleSubdivisionNameUpdate = async (motorId: string, newSubdivisionName: string) => {
+    try {
+      await updateMotorSubdivision(motorId, newSubdivisionName)
+      await loadReception()
+      setSuccessMessage(`Подразделение изменено на "${newSubdivisionName}"`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Ошибка обновления подразделения')
+    }
+  }
+
   const handleOpenSaveTemplateModal = (motorId: string) => {
     setSelectedMotorForTemplate(motorId)
     setShowSaveTemplateModal(true)
@@ -426,6 +448,8 @@ export const EditReception: React.FC = () => {
           onReceptionNumberUpdate={handleReceptionNumberUpdate}
           onReceptionDateUpdate={handleReceptionDateUpdate}
           onCounterpartyUpdate={handleCounterpartyUpdate}
+          onServiceNameUpdate={handleServiceNameUpdate}
+          onSubdivisionNameUpdate={handleSubdivisionNameUpdate}
           onAddGroupClick={handleAddGroupClick}
           onDuplicatePosition={handleDuplicatePosition}
           onDeletePosition={handleDeletePosition}

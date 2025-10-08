@@ -60,6 +60,8 @@ interface EditableReceptionPreviewProps {
   onReceptionNumberUpdate?: (newReceptionNumber: string) => void
   onReceptionDateUpdate?: (newReceptionDate: string) => void
   onCounterpartyUpdate?: (counterpartyId: string) => void
+  onServiceNameUpdate?: (motorId: string, newServiceName: string) => void
+  onSubdivisionNameUpdate?: (motorId: string, newSubdivisionName: string) => void
   onAddGroupClick?: (motorId: string) => void
   onDuplicatePosition?: (motorId: string) => void
   onDeletePosition?: (motorId: string) => void
@@ -485,6 +487,8 @@ interface MotorGroupProps {
   onItemUpdate?: (itemIndex: number, updates: Partial<ReceptionItem>) => void
   onItemNameUpdate?: (itemIndex: number, newName: string) => void
   onItemDelete?: (itemIndex: number) => void
+  onServiceNameUpdate?: (newServiceName: string) => void
+  onSubdivisionNameUpdate?: (newSubdivisionName: string) => void
   onAddGroupClick?: () => void
   onDuplicatePosition?: () => void
   onDeletePosition?: () => void
@@ -497,6 +501,8 @@ const MotorGroup: React.FC<MotorGroupProps> = ({
   onItemUpdate,
   onItemNameUpdate,
   onItemDelete,
+  onServiceNameUpdate,
+  onSubdivisionNameUpdate,
   onAddGroupClick,
   onDuplicatePosition,
   onDeletePosition,
@@ -504,6 +510,10 @@ const MotorGroup: React.FC<MotorGroupProps> = ({
   onSaveAsTemplate,
 }) => {
   const [isExpanded, setIsExpanded] = useState(true)
+  const [isEditingServiceName, setIsEditingServiceName] = useState(false)
+  const [isEditingSubdivisionName, setIsEditingSubdivisionName] = useState(false)
+  const [editServiceName, setEditServiceName] = useState(motor.motor_service_description)
+  const [editSubdivisionName, setEditSubdivisionName] = useState(motor.subdivisions.name)
 
   const workGroupMap = new Map<string, ReceptionItem[]>()
   for (const item of motor.items) {
@@ -521,6 +531,38 @@ const MotorGroup: React.FC<MotorGroupProps> = ({
     .reduce((sum, item) => sum + (item.quantity * item.price), 0)
   const profit = incomeTotal + expenseTotal
 
+  const handleServiceNameSave = () => {
+    if (onServiceNameUpdate && editServiceName.trim() && editServiceName !== motor.motor_service_description) {
+      onServiceNameUpdate(editServiceName.trim())
+    }
+    setIsEditingServiceName(false)
+  }
+
+  const handleServiceNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleServiceNameSave()
+    } else if (e.key === 'Escape') {
+      setEditServiceName(motor.motor_service_description)
+      setIsEditingServiceName(false)
+    }
+  }
+
+  const handleSubdivisionNameSave = () => {
+    if (onSubdivisionNameUpdate && editSubdivisionName.trim() && editSubdivisionName !== motor.subdivisions.name) {
+      onSubdivisionNameUpdate(editSubdivisionName.trim())
+    }
+    setIsEditingSubdivisionName(false)
+  }
+
+  const handleSubdivisionNameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSubdivisionNameSave()
+    } else if (e.key === 'Escape') {
+      setEditSubdivisionName(motor.subdivisions.name)
+      setIsEditingSubdivisionName(false)
+    }
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 mb-4">
       <div className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-t-lg">
@@ -529,8 +571,82 @@ const MotorGroup: React.FC<MotorGroupProps> = ({
             {motor.position_in_reception}
           </span>
           <div className="flex-1">
-            <h2 className="text-sm font-semibold text-gray-900">{motor.motor_service_description}</h2>
-            <p className="text-xs text-gray-600">{motor.subdivisions.name}</p>
+            {isEditingServiceName && onServiceNameUpdate ? (
+              <input
+                type="text"
+                value={editServiceName}
+                onChange={(e) => setEditServiceName(e.target.value)}
+                onBlur={handleServiceNameSave}
+                onKeyDown={handleServiceNameKeyDown}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                className="w-full px-2 py-1 text-sm font-semibold text-gray-900 border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                <h2
+                  className={`text-sm font-semibold text-gray-900 ${onServiceNameUpdate ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                  onClick={(e) => {
+                    if (onServiceNameUpdate) {
+                      e.stopPropagation()
+                      setIsEditingServiceName(true)
+                    }
+                  }}
+                >
+                  {motor.motor_service_description}
+                </h2>
+                {onServiceNameUpdate && !isEditingServiceName && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsEditingServiceName(true)
+                    }}
+                    className="text-gray-400 hover:text-blue-600"
+                    title="Редактировать название позиции"
+                  >
+                    <Edit2 size={14} />
+                  </button>
+                )}
+              </div>
+            )}
+            {isEditingSubdivisionName && onSubdivisionNameUpdate ? (
+              <input
+                type="text"
+                value={editSubdivisionName}
+                onChange={(e) => setEditSubdivisionName(e.target.value)}
+                onBlur={handleSubdivisionNameSave}
+                onKeyDown={handleSubdivisionNameKeyDown}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+                className="w-full px-2 py-0.5 text-xs text-gray-600 border border-blue-500 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 mt-0.5"
+              />
+            ) : (
+              <div className="flex items-center gap-1 mt-0.5">
+                <p
+                  className={`text-xs text-gray-600 ${onSubdivisionNameUpdate ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                  onClick={(e) => {
+                    if (onSubdivisionNameUpdate) {
+                      e.stopPropagation()
+                      setIsEditingSubdivisionName(true)
+                    }
+                  }}
+                >
+                  {motor.subdivisions.name}
+                </p>
+                {onSubdivisionNameUpdate && !isEditingSubdivisionName && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setIsEditingSubdivisionName(true)
+                    }}
+                    className="text-gray-400 hover:text-blue-600"
+                    title="Редактировать подразделение"
+                  >
+                    <Edit2 size={12} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -622,6 +738,8 @@ export const EditableReceptionPreview: React.FC<EditableReceptionPreviewProps> =
   onReceptionNumberUpdate,
   onReceptionDateUpdate,
   onCounterpartyUpdate,
+  onServiceNameUpdate,
+  onSubdivisionNameUpdate,
   onAddGroupClick,
   onDuplicatePosition,
   onDeletePosition,
@@ -799,6 +917,8 @@ export const EditableReceptionPreview: React.FC<EditableReceptionPreviewProps> =
             onItemUpdate={(idx, updates) => handleItemUpdate(motor.id, idx, updates)}
             onItemNameUpdate={(idx, newName) => handleItemNameUpdate(motor.id, idx, newName)}
             onItemDelete={(idx) => handleItemDelete(motor.id, idx)}
+            onServiceNameUpdate={onServiceNameUpdate ? (newServiceName) => onServiceNameUpdate(motor.id, newServiceName) : undefined}
+            onSubdivisionNameUpdate={onSubdivisionNameUpdate ? (newSubdivisionName) => onSubdivisionNameUpdate(motor.id, newSubdivisionName) : undefined}
             onAddGroupClick={onAddGroupClick ? () => onAddGroupClick(motor.id) : undefined}
             onDuplicatePosition={onDuplicatePosition ? () => onDuplicatePosition(motor.id) : undefined}
             onDeletePosition={onDeletePosition ? () => onDeletePosition(motor.id) : undefined}

@@ -409,3 +409,53 @@ export const deleteMotor = async (motorId: string) => {
     throw new Error(`Ошибка удаления двигателя: ${deleteMotorError.message}`)
   }
 }
+
+export const updateMotorServiceName = async (motorId: string, newServiceName: string) => {
+  const { error } = await supabase
+    .from('accepted_motors')
+    .update({ motor_service_description: newServiceName })
+    .eq('id', motorId)
+
+  if (error) {
+    throw new Error(`Ошибка обновления названия позиции: ${error.message}`)
+  }
+}
+
+export const updateMotorSubdivision = async (motorId: string, newSubdivisionName: string) => {
+  let { data: subdivision, error: subdivisionError } = await supabase
+    .from('subdivisions')
+    .select('id')
+    .eq('name', newSubdivisionName)
+    .maybeSingle()
+
+  if (subdivisionError) {
+    throw new Error(`Ошибка поиска подразделения: ${subdivisionError.message}`)
+  }
+
+  if (!subdivision) {
+    const { data: newSubdivision, error: createError } = await supabase
+      .from('subdivisions')
+      .insert({
+        name: newSubdivisionName,
+        code: '',
+        description: '',
+      })
+      .select()
+      .single()
+
+    if (createError) {
+      throw new Error(`Ошибка создания подразделения: ${createError.message}`)
+    }
+
+    subdivision = newSubdivision
+  }
+
+  const { error: updateError } = await supabase
+    .from('accepted_motors')
+    .update({ subdivision_id: subdivision.id })
+    .eq('id', motorId)
+
+  if (updateError) {
+    throw new Error(`Ошибка обновления подразделения: ${updateError.message}`)
+  }
+}
